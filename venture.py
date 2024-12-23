@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Database Configuration
 MONGO_URI = 'mongodb+srv://harry:Sachdeva@cluster1.b02ct.mongodb.net/?retryWrites=true&w=majority&appName=Cluster1'
 client = MongoClient(MONGO_URI)
-db = client['Venture']
+db = client['Testing']
 users_collection = db['shalu']
 settings_collection = db['settings']
 redeem_codes_collection = db['redeem_code-Harveyy']
@@ -55,6 +55,8 @@ async def help_command(update: Update, context: CallbackContext):
             "*🔸 /users* - List all allowed users.\n"
             "*🔸 /gen* - Generate a redeem code.\n"
             "*🔸 /redeem* - Redeem a code.\n"
+            "*🔸 /thread* - Set a thread for communication.\n"
+            "*🔸 /show* - Show current settings.\n"
             "*🔸 /cleanup* - Clean up stored data.\n"
             "*🔸 /delete_code* - Delete a redeem code.\n"
             "*🔸 /list_codes* - List all redeem codes.\n"
@@ -144,6 +146,51 @@ async def is_user_allowed(user_id):
             if expiry_date > datetime.now(timezone.utc):
                 return True
     return False
+
+async def set_thread(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_USER_ID:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="*❌ You are not authorized to set the number of threads!*", parse_mode='Markdown')
+        return
+
+    if len(context.args) != 1:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="*⚠️ Usage: /thread <number of threads>*", parse_mode='Markdown')
+        return
+
+    try:
+        threads = int(context.args[0])
+        if threads <= 0:
+            raise ValueError("Number of threads must be positive.")
+
+        # Save the number of threads to the database
+        settings_collection.update_one(
+            {"setting": "threads"},
+            {"$set": {"value": threads}},
+            upsert=True
+        )
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"*✅ Number of threads set to {threads}.*", parse_mode='Markdown')
+
+    except ValueError as e:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"*⚠️ Error: {e}*", parse_mode='Markdown')
+
+async def show_settings(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_USER_ID:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="*❌ You are not authorized to view the settings!*", parse_mode='Markdown')
+        return
+
+    # Retrieve byte size and thread count from the database
+    threads = settings_collection.find_one({"setting": "threads"})
+
+    threads = threads["value"] if threads else DEFAULT_THREADS
+
+    message = (
+        f"*🔢 Current Settings:*\n"
+        f"*💻 Threads: {threads}*"
+    )
+
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='Markdown')
+
 
 # Blocked Ports
 blocked_ports = [8700, 20000, 443, 17500, 9031, 20002, 20001]
@@ -716,9 +763,12 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("extend_expiry", extend_expiry))
     application.add_handler(CommandHandler("broadcast", broadcast_message))
+    application.add_handler(CommandHandler("thread", set_thread))
+    application.add_handler(CommandHandler("show", show_settings))
 
     # Other handlers remain unchanged
     application.run_polling()
 
 if __name__ == '__main__':
     main()
+
